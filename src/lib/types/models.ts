@@ -1,5 +1,13 @@
 export type UUID = string;
 
+export interface ChatMessage {
+    id: string; // UUID
+    sender: string; // Player identity name, NPC name, or 'GM'
+    text: string;
+    timestamp: number;
+    color?: string; // Optional styling
+}
+
 // Campaigns & Sessions
 export interface Campaign {
     id: UUID;
@@ -79,7 +87,7 @@ export interface Combatant {
     hp: { current: number; max: number };
     ac: number;
     initiative: number;
-    conditions: string[];
+    conditions: { name: string; duration: number }[];
     notes: string;
 }
 
@@ -163,6 +171,7 @@ export interface Thread {
     notesLog: ThreadNote[];
     createdAt: number;
     createdSession: number;
+    metadata?: { x: number; y: number; links: string[] };
 }
 
 export interface VillainClock {
@@ -188,6 +197,7 @@ export interface CanonEntry {
     traits: string;
     createdAt: number;
     updatedAt: number;
+    metadata?: { x: number; y: number; links: string[] };
 }
 
 export interface Ruling {

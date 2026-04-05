@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import type { AudioTrack, UUID } from '../../types/models';
 import { getAudioTracks, saveAudioTrack, deleteAudioTrack, saveImageBlob, getImageBlob, deleteImageBlob } from '../../core/storage/db';
 import { campaignStore } from '../campaigns/stores';
+import { broadcastAudioAction } from '../../core/sync/peerHost';
 
 type SoundboardState = {
     tracks: AudioTrack[];
@@ -96,12 +97,17 @@ export async function playAmbient(id: UUID) {
     ambientPlayer.src = currentAmbientObjectUrl;
     ambientPlayer.play().catch(e => console.error("Playback failed:", e));
 
+    broadcastAudioAction('PLAY_AMBIENT', blob, track.name);
+
     soundboardStore.update(s => ({ ...s, activeAmbientId: id }));
 }
 
 export function stopAmbient() {
     ambientPlayer.pause();
     ambientPlayer.currentTime = 0;
+
+    broadcastAudioAction('STOP_AMBIENT');
+
     soundboardStore.update(s => ({ ...s, activeAmbientId: null }));
 }
 
@@ -112,6 +118,8 @@ export async function playSfx(id: UUID) {
 
     const blob = await getImageBlob(track.blobId);
     if (!blob) return;
+
+    broadcastAudioAction('PLAY_SFX', blob, track.name);
 
     const currentSfxObjectUrl = URL.createObjectURL(blob);
     sfxPlayer.src = currentSfxObjectUrl;

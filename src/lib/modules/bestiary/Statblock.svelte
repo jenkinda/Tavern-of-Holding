@@ -1,11 +1,64 @@
 <script lang="ts">
     import type { Monster } from "../../types/models";
+    import { pushChatMessage } from "../../core/sync/chatStore";
 
     let { monster } = $props<{ monster: Monster }>();
 
     function calculateModifier(score: number): string {
         const mod = Math.floor((score - 10) / 2);
         return mod >= 0 ? `+${mod}` : `${mod}`;
+    }
+
+    function injectRollSpans(desc: string, actionName: string) {
+        // Match standard dice notation e.g. 1d6, 2d8 + 4
+        const diceRegex = /(\d+d\d+(?:\s*[+-]\s*\d+)?)(?![^<]*>)/g;
+        return desc.replace(diceRegex, (match) => {
+            const cleanMatch = match.replace(/\s+/g, '');
+            return `<span class="rollable-dice cursor-pointer text-red-800 font-bold hover:underline bg-red-100/50 rounded px-1 border border-red-800/20 shadow-sm" data-roll="${cleanMatch}" data-action="${actionName}" title="Click to roll!">${match}</span>`;
+        });
+    }
+
+    function handleStatblockClick(e: MouseEvent) {
+        const target = e.target as HTMLElement;
+        const diceSpan = target.closest('.rollable-dice') as HTMLElement;
+        if (!diceSpan) return;
+
+        const diceStr = diceSpan.dataset.roll;
+        const actionName = diceSpan.dataset.action || "Action";
+
+        if (diceStr) {
+            const match = diceStr.match(/(\d+)d(\d+)(?:([+-])(\d+))?/);
+            if (match) {
+                const count = parseInt(match[1]);
+                const sides = parseInt(match[2]);
+                const sign = match[3];
+                const mod = match[4] ? parseInt(match[4]) : 0;
+
+                let total = 0;
+                let rolls = [];
+                for (let i = 0; i < count; i++) {
+                    const r = Math.floor(Math.random() * sides) + 1;
+                    rolls.push(r);
+                    total += r;
+                }
+
+                if (sign && mod) {
+                    if (sign === '+') total += mod;
+                    else if (sign === '-') total -= mod;
+                }
+
+                const modStr = sign && mod ? ` ${sign} ${mod}` : '';
+                const text = `uses ${actionName}! Rolls ${diceStr} ➔ [${rolls.join(', ')}]${modStr} = **${total}**`;
+                
+                pushChatMessage({
+                    id: crypto.randomUUID(),
+                    sender: monster.name,
+                    text: text,
+                    timestamp: Date.now(),
+                    color: 'var(--tavern-accent-red)'
+                });
+            }
+        }
     }
 </script>
 
@@ -136,13 +189,15 @@
             >
                 Actions
             </h2>
-            <div class="space-y-2 mb-4 text-[#000] text-sm leading-snug">
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="space-y-2 mb-4 text-[#000] text-sm leading-snug" onclick={handleStatblockClick}>
                 {#each monster.actions as action}
                     <p>
                         <span class="font-bold italic text-[#58180d]"
                             >{action.name}.</span
                         >
-                        {@html action.desc}
+                        {@html injectRollSpans(action.desc, action.name)}
                     </p>
                 {/each}
             </div>

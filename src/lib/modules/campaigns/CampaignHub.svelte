@@ -18,6 +18,7 @@
         importCampaignData,
         downloadJsonFile,
     } from "../../core/storage/transfer";
+    import { pushToCloud, pullFromCloud, updateCloud } from "../../core/storage/cloud";
 
     let importInput: HTMLInputElement;
 
@@ -54,6 +55,42 @@
             if (importInput) importInput.value = "";
         };
         reader.readAsText(file);
+    }
+
+    let cloudToken = $state("");
+    let isCloudLoading = $state(false);
+
+    async function handlePushCloud(campaignId: string) {
+        isCloudLoading = true;
+        try {
+            const json = await exportCampaignData(campaignId);
+            if (cloudToken) {
+                await updateCloud(cloudToken, json);
+                alert("Successfully pushed updates to Cloud Node!");
+            } else {
+                cloudToken = await pushToCloud(json);
+                alert(`Successfully created Cloud Node! Your Host Token is: ${cloudToken}\n\nSave this token to load this campaign elsewhere.`);
+            }
+        } catch (e: any) {
+            console.error(e);
+            alert(`Cloud push failed: ${e.message}`);
+        }
+        isCloudLoading = false;
+    }
+
+    async function handlePullCloud() {
+        if (!cloudToken) return alert("Enter a Host Token first to pull data.");
+        isCloudLoading = true;
+        try {
+            const json = await pullFromCloud(cloudToken);
+            await importCampaignData(json);
+            await loadCampaigns();
+            alert("Successfully pulled and merged from Cloud Node!");
+        } catch (e: any) {
+            console.error(e);
+            alert(`Cloud pull failed: ${e.message}`);
+        }
+        isCloudLoading = false;
     }
 
     onMount(() => {
@@ -294,6 +331,38 @@
                             </li>
                         {/each}
                     </ul>
+                {/if}
+
+                <!-- Cloud Sync Panel -->
+                {#if $campaignStore.activeCampaignId}
+                    <div class="mt-6 bg-[var(--tavern-bg-base)] rounded-xl border border-[var(--tavern-accent-gold)]/30 p-4 shadow-inner animate-in slide-in-from-bottom-2">
+                        <h3 class="text-sm font-serif text-[var(--tavern-accent-gold)] tracking-widest uppercase mb-1">Cloud Database (BaaS)</h3>
+                        <p class="text-[0.65rem] text-[var(--tavern-text-main)]/60 mb-3 leading-tight opacity-80">Backup/Sync this campaign via JSONBlob Node.</p>
+                        
+                        <input 
+                            type="text" 
+                            bind:value={cloudToken} 
+                            placeholder="Host Token (Leave blank to generate)" 
+                            class="w-full bg-[var(--tavern-bg-panel)] border border-[var(--tavern-accent-gold)]/40 rounded px-2 py-1.5 text-xs text-[var(--tavern-text-main)] font-mono mb-3 focus:outline-none focus:border-[var(--tavern-accent-gold)] transition-colors"
+                        />
+                        
+                        <div class="flex gap-2">
+                            <button 
+                                onclick={() => handlePushCloud($campaignStore.activeCampaignId!)} 
+                                class="flex-1 bg-[var(--tavern-accent-red)] hover:bg-[var(--tavern-accent-red-hover)] text-white px-2 py-1.5 rounded text-xs transition-all font-medium shadow {isCloudLoading ? 'opacity-50 cursor-not-allowed' : ''}" 
+                                disabled={isCloudLoading}
+                            >
+                                {isCloudLoading ? 'Syncing...' : 'Push to Cloud'}
+                            </button>
+                            <button 
+                                onclick={handlePullCloud} 
+                                class="flex-1 bg-[var(--tavern-bg-panel)] hover:bg-[var(--tavern-bg-base)] text-[var(--tavern-accent-gold)] border border-[var(--tavern-accent-gold)]/40 px-2 py-1.5 rounded text-xs transition-all font-medium shadow {isCloudLoading ? 'opacity-50 cursor-not-allowed' : ''}" 
+                                disabled={isCloudLoading}
+                            >
+                                Pull & Merge
+                            </button>
+                        </div>
+                    </div>
                 {/if}
             </section>
 

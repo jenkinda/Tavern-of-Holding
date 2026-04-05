@@ -84,10 +84,10 @@ export function updateHP(id: string, amount: number) {
     }));
 }
 
-export function toggleCond(id: string, cond: string) {
+export function toggleCond(id: string, cond: string, duration: number = -1) {
     encounterStore.update(state => ({
         ...state,
-        combatants: state.combatants.map(c => c.id === id ? toggleCondition(c, cond) : c)
+        combatants: state.combatants.map(c => c.id === id ? toggleCondition(c, cond, duration) : c)
     }));
 }
 

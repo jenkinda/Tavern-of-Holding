@@ -136,6 +136,46 @@
         expandedRoomId = expandedRoomId === id ? null : id;
     }
 
+    // --- Procedural Generation ---
+    const ROOM_TYPES = ["Crypt", "Armory", "Prison", "Library", "Temple", "Barracks", "Torture Chamber", "Treasure Vault", "Laboratory", "Chasm", "Great Hall", "Shrine", "Kitchen", "Mushroom Farm", "Cavern"];
+    const ROOM_ADJECTIVES = ["Obsidian", "Forgotten", "Cursed", "Bloodsoaked", "Silent", "Shadowy", "Gilded", "Flooded", "Collapsing", "Arcane", "Whispering"];
+    const OCCUPANT_TYPES = ["3d6 Goblins playing dice", "A sleeping Ogre", "A Gelatinous Cube", "Dozens of giant spiders", "Cultists performing a ritual", "A lone dying adventurer", "2 Wraiths bound to the room", "Empty, but smells of sulfur", "A Mimic disguised as a chest"];
+    const TRAPS_FEATURES = ["Poison dart chest (DC 14)", "Pitfall trap (DC 15 Dex, 2d6 falling)", "Arcane lock on the door", "Statue that breathes fire", "A pile of golden coins (illusory)", "A magical fountain of healing", "None", "None", "Blood stains spreading toward the center", "Crumbling pillars (unstable terrain)"];
+
+    async function handleGenerateLayout() {
+        const cid = $campaignStore.activeCampaignId;
+        const lid = $dungeonStore.activeLevelId;
+        if (!cid || !lid) return;
+
+        const count = parseInt(prompt("How many rooms to generate?", "15") || "0");
+        if (count <= 0) return;
+
+        if (!confirm(`Generate ${count} procedural rooms on this level?`)) return;
+
+        for (let i = 0; i < count; i++) {
+            const adj = ROOM_ADJECTIVES[Math.floor(Math.random() * ROOM_ADJECTIVES.length)];
+            const type = ROOM_TYPES[Math.floor(Math.random() * ROOM_TYPES.length)];
+            const occupant = OCCUPANT_TYPES[Math.floor(Math.random() * OCCUPANT_TYPES.length)];
+            const trap = TRAPS_FEATURES[Math.floor(Math.random() * TRAPS_FEATURES.length)];
+
+            const hasOccupants = occupant !== "Empty, but smells of sulfur";
+            const room: DungeonRoom = {
+                id: crypto.randomUUID(),
+                campaignId: cid,
+                levelId: lid,
+                name: `${i + 1} - The ${adj} ${type}`,
+                status: hasOccupants ? "occupied" : "unexplored",
+                description: "Dust hangs in the air...",
+                occupants: hasOccupants ? occupant : "",
+                traps: trap === "None" ? "" : trap,
+                createdAt: Date.now() + i
+            };
+            await saveDungeonRoom(room);
+        }
+
+        await loadDungeonForCampaign(cid); // Refresh
+    }
+
     // --- Patrol Logic ---
     async function handleAddPatrol() {
         const cid = $campaignStore.activeCampaignId;
@@ -427,13 +467,21 @@
                     {#if selectedTab === "rooms"}
                         <div class="flex justify-between mb-4 items-center">
                             <h3 class="text-lg font-serif">Room Topology</h3>
-                            <button
-                                class="bg-[var(--tavern-accent-gold)]/10 text-[var(--tavern-accent-gold)] border border-[var(--tavern-accent-gold)]/30 px-3 py-1 rounded text-sm hover:bg-[var(--tavern-accent-gold)]/20 transition-colors"
-                                onclick={() =>
-                                    (showNewRoomForm = !showNewRoomForm)}
-                            >
-                                + Excavate Room
-                            </button>
+                            <div class="flex gap-2">
+                                <button
+                                    class="bg-[var(--tavern-accent-gold)]/10 text-[var(--tavern-accent-gold)] border border-[var(--tavern-accent-gold)]/30 px-3 py-1 rounded text-sm hover:bg-[var(--tavern-accent-gold)]/20 transition-colors flex items-center gap-1"
+                                    onclick={handleGenerateLayout}
+                                >
+                                    <span>🎲</span> Generate Layout
+                                </button>
+                                <button
+                                    class="bg-[var(--tavern-accent-gold)]/10 text-[var(--tavern-accent-gold)] border border-[var(--tavern-accent-gold)]/30 px-3 py-1 rounded text-sm hover:bg-[var(--tavern-accent-gold)]/20 transition-colors"
+                                    onclick={() =>
+                                        (showNewRoomForm = !showNewRoomForm)}
+                                >
+                                    + Excavate
+                                </button>
+                            </div>
                         </div>
 
                         {#if showNewRoomForm}

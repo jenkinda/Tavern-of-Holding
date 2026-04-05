@@ -15,6 +15,7 @@ export function sortInitiative(combatants: Combatant[]): Combatant[] {
 export function advanceTurn(encounter: CombatEncounter): CombatEncounter {
     if (encounter.combatants.length === 0) return encounter;
 
+    const currentCombatantIndex = encounter.turnIndex;
     let nextIndex = encounter.turnIndex + 1;
     let nextRound = encounter.round;
 
@@ -23,8 +24,20 @@ export function advanceTurn(encounter: CombatEncounter): CombatEncounter {
         nextRound += 1;
     }
 
+    // Process condition burn-down for the combatant whose turn just finished
+    const updatedCombatants = encounter.combatants.map((c, i) => {
+        if (i === currentCombatantIndex) {
+            const newConditions = c.conditions
+                .map(cond => cond.duration > 0 ? { ...cond, duration: cond.duration - 1 } : cond)
+                .filter(cond => cond.duration !== 0);
+            return { ...c, conditions: newConditions };
+        }
+        return c;
+    });
+
     return {
         ...encounter,
+        combatants: updatedCombatants,
         turnIndex: nextIndex,
         round: nextRound
     };
@@ -64,11 +77,11 @@ export function applyHealing(combatant: Combatant, amount: number): Combatant {
     };
 }
 
-export function toggleCondition(combatant: Combatant, condition: string): Combatant {
-    const hasCond = combatant.conditions.includes(condition);
+export function toggleCondition(combatant: Combatant, condition: string, duration: number = -1): Combatant {
+    const hasCond = combatant.conditions.some(c => c.name === condition);
     const newConditions = hasCond
-        ? combatant.conditions.filter(c => c !== condition)
-        : [...combatant.conditions, condition];
+        ? combatant.conditions.filter(c => c.name !== condition)
+        : [...combatant.conditions, { name: condition, duration }];
 
     return {
         ...combatant,

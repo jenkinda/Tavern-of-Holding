@@ -1,4 +1,6 @@
 <script lang="ts">
+    import ChatPanel from "../../core/components/ChatPanel.svelte";
+    import { pushChatMessage } from "../../core/sync/chatStore";
     import {
         encounterStore,
         addCombatant,
@@ -33,6 +35,9 @@
 
     // Local state for Quick Edit values (Damage/Heal)
     let quickModifyValues: Record<string, number> = {};
+
+    // Local state for condition duration rounds (-1 is infinite)
+    let defaultCondDuration = -1;
 
     // D&D Beyond Import State
     let showBeyondImport = false;
@@ -153,8 +158,9 @@
     ];
 </script>
 
-<div class="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
-    <!-- Header & Controls -->
+<div class="flex h-full gap-6">
+    <div class="flex-1 flex flex-col space-y-6 animate-in fade-in duration-500 h-full min-w-0 overflow-hidden">
+        <!-- Header & Controls -->
     <header
         class="border-b border-[var(--tavern-accent-gold)]/20 pb-4 flex flex-col md:flex-row justify-between items-start md:items-end gap-4 shrink-0"
     >
@@ -547,9 +553,10 @@
                             {#each combatant.conditions as cond}
                                 <button
                                     onclick={() =>
-                                        toggleCond(combatant.id, cond)}
+                                        toggleCond(combatant.id, cond.name)}
                                     class="px-1.5 py-0.5 bg-[var(--tavern-accent-red)]/20 border border-[var(--tavern-accent-red)]/50 text-[var(--tavern-text-main)] text-[0.6rem] uppercase tracking-wide rounded hover:bg-[var(--tavern-accent-red)]/40 hover:line-through"
-                                    title="Click to remove">{cond}</button
+                                    title="Click to remove"
+                                    >{cond.name}{cond.duration > 0 ? ` (${cond.duration})` : ''}</button
                                 >
                             {/each}
 
@@ -562,20 +569,26 @@
                                 </button>
                                 <!-- Dropdown list -->
                                 <div
-                                    class="absolute bottom-full translate-y-2 lg:bottom-auto lg:top-full left-1/2 -translate-x-1/2 lg:-translate-x-[90%] lg:translate-y-2 mt-1 w-32 bg-[var(--tavern-bg-base)] border border-[var(--tavern-accent-gold)]/30 rounded shadow-xl hidden group-hover:block z-50 max-h-48 overflow-y-auto custom-scrollbar"
+                                    class="absolute bottom-full translate-y-2 lg:bottom-auto lg:top-full left-1/2 -translate-x-1/2 lg:-translate-x-[90%] lg:translate-y-2 mt-1 w-40 bg-[var(--tavern-bg-base)] border border-[var(--tavern-accent-gold)]/30 rounded shadow-xl hidden group-hover:flex flex-col z-50 overflow-hidden"
                                 >
-                                    {#each commonConditions as c}
-                                        <button
-                                            class="w-full text-left px-2 py-1 text-[0.65rem] hover:bg-[var(--tavern-accent-gold)]/20 {combatant.conditions.includes(
-                                                c,
-                                            )
-                                                ? 'text-[var(--tavern-accent-red)]'
-                                                : 'text-[var(--tavern-text-main)]/70'}"
-                                            onclick={() =>
-                                                toggleCond(combatant.id, c)}
-                                            >{c}</button
-                                        >
-                                    {/each}
+                                    <div class="p-2 border-b border-[var(--tavern-accent-gold)]/20 bg-[var(--tavern-bg-panel)] shrink-0">
+                                        <div class="flex flex-col gap-1">
+                                            <span class="text-[0.6rem] uppercase text-[var(--tavern-text-main)]/60 tracking-wider">Duration (-1 = ∞)</span>
+                                            <input type="number" bind:value={defaultCondDuration} class="w-full bg-[var(--tavern-bg-base)] text-[var(--tavern-text-main)] text-xs px-2 py-1 border border-[var(--tavern-accent-gold)]/30 rounded focus:outline-none focus:border-[var(--tavern-accent-gold)]"/>
+                                        </div>
+                                    </div>
+                                    <div class="max-h-48 overflow-y-auto custom-scrollbar">
+                                        {#each commonConditions as c}
+                                            <button
+                                                class="w-full text-left px-2 py-1.5 text-[0.65rem] hover:bg-[var(--tavern-accent-gold)]/20 {combatant.conditions.some(cond => cond.name === c)
+                                                    ? 'text-[var(--tavern-accent-red)]'
+                                                    : 'text-[var(--tavern-text-main)]/70'}"
+                                                onclick={() =>
+                                                    toggleCond(combatant.id, c, defaultCondDuration)}
+                                                >{c}</button
+                                            >
+                                        {/each}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -593,6 +606,15 @@
             </div>
         {/each}
     </section>
+    </div>
+
+    <!-- GM Chat Panel -->
+    <div class="w-80 h-full shrink-0 flex flex-col hidden lg:flex">
+        <ChatPanel 
+            currentIdentity="Game Master" 
+            onSendChat={(text) => pushChatMessage({ id: crypto.randomUUID(), sender: 'GM', text, timestamp: Date.now(), color: 'var(--tavern-accent-red)' })} 
+        />
+    </div>
 </div>
 
 <style>

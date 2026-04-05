@@ -1,18 +1,20 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte";
-    import { joinSession, leaveSession } from "../../core/sync/peerClient";
+    import { joinSession, leaveSession, sendClientChat } from "../../core/sync/peerClient";
     import { mapStore } from "../../modules/maps/stores";
     import { encounterStore } from "../../modules/combat/stores";
     import PlayerSheet from "./PlayerSheet.svelte";
+    import ChatPanel from "../../core/components/ChatPanel.svelte";
 
     let joinCode = $state("");
-    let statusMsg = $state("Enter a DM's Session Code to join.");
+    let playerName = $state("");
+    let statusMsg = $state("Enter a Session Code & Name");
     let isConnected = $state(false);
     let activeTab = $state<"vtt" | "sheet">("vtt");
 
     function connect() {
-        if (!joinCode) return;
-        joinSession(joinCode, (msg) => {
+        if (!joinCode || !playerName) return;
+        joinSession(joinCode, playerName, (msg) => {
             statusMsg = msg;
             if (msg === "Connected to Session.") {
                 isConnected = true;
@@ -52,6 +54,14 @@
             >
                 {statusMsg}
             </p>
+
+            <input
+                type="text"
+                bind:value={playerName}
+                placeholder="Character Name"
+                class="bg-[var(--tavern-bg-base)] border border-[var(--tavern-accent-gold)]/50 rounded-lg px-4 py-3 w-full tracking-widest text-[var(--tavern-text-main)] mb-3 focus:outline-none focus:border-[var(--tavern-accent-gold)]"
+                onkeypress={(e) => e.key === "Enter" && connect()}
+            />
 
             <input
                 type="text"
@@ -207,6 +217,14 @@
                             {/each}
                         </div>
                     {/if}
+                </div>
+
+                <!-- Chat Panel -->
+                <div class="h-64 shrink-0">
+                    <ChatPanel 
+                        currentIdentity={playerName} 
+                        onSendChat={(text: string) => sendClientChat(text, playerName)} 
+                    />
                 </div>
             {:else}
                 <!-- Player Sheet View -->

@@ -7,9 +7,11 @@
         getClocksForCampaign,
         saveClock,
         deleteClock,
+        getCanonForCampaign,
+        saveCanonEntry
     } from "../../core/storage/db";
     import { campaignStore } from "../campaigns/stores";
-    import type { Thread, VillainClock, UUID } from "../../types/models";
+    import type { Thread, VillainClock, CanonEntry, UUID } from "../../types/models";
 
     // Modals & State
     let showThreadModal = $state(false);
@@ -31,6 +33,25 @@
     // Data Stores
     let threads = $state<Thread[]>([]);
     let clocks = $state<VillainClock[]>([]);
+    let canonEntries = $state<CanonEntry[]>([]);
+
+    let viewMode = $state<"list" | "web">("list");
+    
+    // Web View Mechanics
+    let webContainer: HTMLDivElement | undefined = $state();
+    let draggedNodeId: string | null = $state(null);
+    let draggingType: 'thread' | 'canon' | null = $state(null);
+    let dragOffsetX = 0; let dragOffsetY = 0;
+
+    let linkingSourceId: string | null = $state(null);
+    let linkingSourceType: 'thread' | 'canon' | null = $state(null);
+    let mouseX = $state(0);
+    let mouseY = $state(0);
+
+    let nodes = $derived([
+        ...threads.map(t => ({ id: t.id, type: 'thread' as const, title: t.title, meta: t.metadata || { x: Math.random()*80+10, y: Math.random()*80+10, links: [] }, raw: t })),
+        ...canonEntries.map(c => ({ id: c.id, type: 'canon' as const, title: c.name, meta: c.metadata || { x: Math.random()*80+10, y: Math.random()*80+10, links: [] }, raw: c }))
+    ]);
 
     let unsubscribe: () => void;
 
@@ -38,6 +59,7 @@
         if (!cid) return;
         threads = await getThreadsForCampaign(cid);
         clocks = await getClocksForCampaign(cid);
+        canonEntries = await getCanonForCampaign(cid);
     }
 
     onMount(() => {
@@ -216,6 +238,128 @@
         if ($campaignStore.activeCampaignId)
             await loadData($campaignStore.activeCampaignId);
     }
+
+    // --- Web Physics ---
+    function startDragNode(e: MouseEvent | TouchEvent, id: string, type: 'thread' | 'canon') {
+        if (linkingSourceId) {
+            finishLink(id);
+            return;
+        }
+        draggedNodeId = id;
+        draggingType = type;
+        const rect = (e.target as HTMLElement).closest('.web-node')?.getBoundingClientRect();
+        if (rect) {
+            const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+            const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+            dragOffsetX = clientX - rect.left;
+            dragOffsetY = clientY - rect.top;
+        }
+    }
+
+    function onDragMove(e: MouseEvent | TouchEvent) {
+        if (!draggedNodeId || !webContainer || !draggingType) return;
+        const rect = webContainer.getBoundingClientRect();
+        const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+
+        let newX = clientX - rect.left - dragOffsetX + 100; // rough width offset
+        let newY = clientY - rect.top - dragOffsetY + 25; // rough height offset
+        const pctX = (newX / rect.width) * 100;
+        const pctY = (newY / rect.height) * 100;
+
+        if (draggingType === 'thread') {
+            const t = threads.find(x => x.id === draggedNodeId);
+            if (t) {
+                if (!t.metadata) t.metadata = { x: pctX, y: pctY, links: [] };
+                else { t.metadata.x = pctX; t.metadata.y = pctY; }
+                threads = [...threads];
+            }
+        } else {
+            const c = canonEntries.find(x => x.id === draggedNodeId);
+            if (c) {
+                if (!c.metadata) c.metadata = { x: pctX, y: pctY, links: [] };
+                else { c.metadata.x = pctX; c.metadata.y = pctY; }
+                canonEntries = [...canonEntries];
+            }
+        }
+    }
+
+    async function onDragEnd() {
+        if (!draggedNodeId || !draggingType) return;
+        if (draggingType === 'thread') {
+            const t = threads.find(x => x.id === draggedNodeId);
+            if (t) await saveThread($state.snapshot(t));
+        } else {
+             const c = canonEntries.find(x => x.id === draggedNodeId);
+             if (c) await saveCanonEntry($state.snapshot(c));
+        }
+        draggedNodeId = null;
+        draggingType = null;
+    }
+
+    function startLink(e: MouseEvent | TouchEvent, id: string, type: 'thread' | 'canon') {
+        e.stopPropagation();
+        linkingSourceId = id;
+        linkingSourceType = type;
+        const rect = webContainer?.getBoundingClientRect();
+        if (rect) {
+            const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+            const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+            mouseX = clientX - rect.left;
+            mouseY = clientY - rect.top;
+        }
+    }
+
+    async function finishLink(id: string) {
+        if (!linkingSourceId || linkingSourceId === id || !linkingSourceType) return;
+
+        if (linkingSourceType === 'thread') {
+            const t = threads.find(x => x.id === linkingSourceId);
+            if (t) {
+                if (!t.metadata) t.metadata = { x: 50, y: 50, links: [] };
+                if (!t.metadata.links) t.metadata.links = [];
+                if (!t.metadata.links.includes(id)) {
+                    t.metadata.links.push(id);
+                    await saveThread($state.snapshot(t));
+                } else {
+                    t.metadata.links = t.metadata.links.filter(l => l !== id);
+                    await saveThread($state.snapshot(t));
+                }
+            }
+        } else {
+            const c = canonEntries.find(x => x.id === linkingSourceId);
+            if (c) {
+                if (!c.metadata) c.metadata = { x: 50, y: 50, links: [] };
+                if (!c.metadata.links) c.metadata.links = [];
+                if (!c.metadata.links.includes(id)) {
+                    c.metadata.links.push(id);
+                    await saveCanonEntry($state.snapshot(c));
+                } else {
+                    c.metadata.links = c.metadata.links.filter(l => l !== id);
+                    await saveCanonEntry($state.snapshot(c));
+                }
+            }
+        }
+        linkingSourceId = null;
+        linkingSourceType = null;
+    }
+
+    function onWebMouseMove(e: MouseEvent | TouchEvent) {
+        onDragMove(e);
+        if (linkingSourceId && webContainer) {
+            const rect = webContainer.getBoundingClientRect();
+            const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+            const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+            mouseX = clientX - rect.left;
+            mouseY = clientY - rect.top;
+        }
+    }
+
+    function onWebMouseUp() {
+        onDragEnd();
+        linkingSourceId = null;
+        linkingSourceType = null;
+    }
 </script>
 
 <div class="h-full flex flex-col space-y-6">
@@ -247,27 +391,48 @@
                     >{pressureLevel()}</span
                 >
             </div>
-            <div class="flex flex-col">
+            <div class="flex flex-col flex-1">
                 <span
                     class="text-[0.65rem] uppercase tracking-widest text-[var(--tavern-text-main)]/50"
                     >Global Pressure</span
                 >
-                <span
-                    class="text-sm {pressureLevel() > 75
-                        ? 'text-[var(--tavern-accent-red)] font-bold'
-                        : ''}"
-                >
-                    {pressureLevel() > 75
-                        ? "Critical Tension"
-                        : pressureLevel() > 40
-                          ? "Rising Action"
-                          : "Simmering"}
-                </span>
+                <div class="flex items-center gap-4">
+                    <span
+                        class="text-sm {pressureLevel() > 75
+                            ? 'text-[var(--tavern-accent-red)] font-bold'
+                            : ''}"
+                    >
+                        {pressureLevel() > 75
+                            ? "Critical Tension"
+                            : pressureLevel() > 40
+                              ? "Rising Action"
+                              : "Simmering"}
+                    </span>
+
+                    <div class="flex bg-[var(--tavern-bg-base)] border border-[var(--tavern-accent-gold)]/20 rounded overflow-hidden mt-1 md:mt-0">
+                        <button
+                            onclick={() => viewMode = 'list'}
+                            class="px-3 py-1 text-xs transition-colors {viewMode === 'list'
+                                ? 'bg-[var(--tavern-accent-gold)]/20 text-[var(--tavern-accent-gold)]'
+                                : 'text-[var(--tavern-text-main)]/40 hover:bg-[var(--tavern-accent-gold)]/10'}"
+                            >List View</button
+                        >
+                        <button
+                            onclick={() => viewMode = 'web'}
+                            class="px-3 py-1 text-xs transition-colors {viewMode === 'web'
+                                ? 'bg-red-500/20 text-red-400'
+                                : 'text-[var(--tavern-text-main)]/40 hover:bg-[var(--tavern-accent-gold)]/10'}"
+                            >🕸️ Web of Fate</button
+                        >
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
+    <div class="flex-1 overflow-hidden">
+        {#if viewMode === 'list'}
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
         <!-- Threads Column -->
         <div
             class="lg:col-span-2 flex flex-col space-y-4 bg-[var(--tavern-bg-panel)] rounded-xl border border-[var(--tavern-accent-gold)]/10 p-4 h-full"
@@ -528,6 +693,113 @@
                 </div>
             </div>
         </div>
+        </div>
+        {:else}
+        <!-- WEB OF FATE VIEW -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div 
+           bind:this={webContainer}
+           class="w-full h-full bg-[var(--tavern-bg-panel)] rounded-xl border border-[var(--tavern-accent-gold)]/20 relative overflow-hidden"
+           onmousemove={onWebMouseMove}
+           ontouchmove={onWebMouseMove}
+           onmouseup={onWebMouseUp}
+           ontouchend={onWebMouseUp}
+           onmouseleave={onWebMouseUp}
+        >
+            <div class="absolute inset-0 pointer-events-none opacity-10 bg-[url('https://www.transparenttextures.com/patterns/dust.png')] bg-repeat"></div>
+            
+            <svg class="absolute inset-0 w-full h-full pointer-events-none">
+                <defs>
+                    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="3" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                </defs>
+                {#each nodes as node (node.id)}
+                    {#if node.meta.links}
+                        {#each node.meta.links as linkId}
+                            {@const target = nodes.find(n => n.id === linkId)}
+                            {#if target}
+                                <line 
+                                    x1={node.meta.x + "%"} 
+                                    y1={node.meta.y + "%"} 
+                                    x2={target.meta.x + "%"} 
+                                    y2={target.meta.y + "%"} 
+                                    stroke="var(--tavern-accent-red)" 
+                                    stroke-width="2" 
+                                    stroke-dasharray="8 4"
+                                    opacity="0.6"
+                                    filter="url(#glow)"
+                                />
+                            {/if}
+                        {/each}
+                    {/if}
+                {/each}
+                {#if linkingSourceId}
+                    {@const source = nodes.find(n => n.id === linkingSourceId)}
+                    {#if source}
+                        <line 
+                            x1={source.meta.x + "%"} 
+                            y1={source.meta.y + "%"} 
+                            x2={mouseX + "px"} 
+                            y2={mouseY + "px"} 
+                            stroke="white" 
+                            stroke-width="3" 
+                            stroke-dasharray="4 4"
+                            opacity="0.8"
+                        />
+                    {/if}
+                {/if}
+            </svg>
+
+            <div class="absolute inset-0 z-10">
+                {#each nodes as node (node.id)}
+                    <div 
+                        class="absolute web-node transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center select-none"
+                        style="left: {node.meta.x}%; top: {node.meta.y}%;"
+                    >
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <div 
+                            class="bg-[var(--tavern-bg-base)] border rounded-lg p-3 w-48 shadow-[0_4px_15px_rgba(0,0,0,0.5)] flex flex-col gap-2 cursor-grab active:cursor-grabbing {node.id === draggedNodeId ? 'ring-2 ring-[var(--tavern-accent-gold)] z-50' : 'z-10'} {node.type === 'thread' ? 'border-[var(--tavern-accent-red)]/50 border-l-4 border-l-[var(--tavern-accent-red)]' : 'border-blue-500/50 border-l-4 border-l-blue-500'}"
+                            onmousedown={(e) => startDragNode(e, node.id, node.type)}
+                            ontouchstart={(e) => startDragNode(e, node.id, node.type)}
+                        >
+                            <div class="text-[0.55rem] uppercase tracking-widest opacity-60 text-right">
+                                {node.type === 'thread' ? 'Loose Thread' : 'Canon Entity'}
+                            </div>
+                            <div class="font-bold text-sm leading-tight {node.type === 'thread' ? 'text-[var(--tavern-accent-red)]' : 'text-blue-300'}">
+                                {node.title}
+                            </div>
+                            
+                            <div class="flex justify-between border-t border-white/10 pt-2 mt-1">
+                                <button
+                                    class="text-xs bg-black/40 px-2 py-1 rounded hover:bg-white/10 transition-colors pointer-events-auto"
+                                    onmousedown={(e) => startLink(e, node.id, node.type)}
+                                    ontouchstart={(e) => startLink(e, node.id, node.type)}
+                                >
+                                🔗 Link
+                                </button>
+                                {#if node.type === 'thread'}
+                                     <button
+                                         class="text-xs text-[var(--tavern-accent-gold)] hover:underline pointer-events-auto"
+                                         onmousedown={(e) => { e.stopPropagation(); editThread(node.raw); }}
+                                     >Edit</button>
+                                {/if}
+                            </div>
+                        </div>
+                    </div>
+                {/each}
+            </div>
+
+            <!-- Legend -->
+            <div class="absolute bottom-4 right-4 bg-black/50 p-3 rounded border border-white/10 flex flex-col gap-1 text-xs text-white/50 pointer-events-none">
+                <div><span class="text-[var(--tavern-accent-red)]">■</span> Loose Thread</div>
+                <div><span class="text-blue-500">■</span> Canon Entity (Archive)</div>
+                <div class="mt-2 text-[0.6rem] uppercase tracking-widest border-t border-white/10 pt-1">Drag Link to connect</div>
+                <div class="text-[0.6rem] uppercase tracking-widest">Click Link on connection to remove</div>
+            </div>
+        </div>
+        {/if}
     </div>
 </div>
 

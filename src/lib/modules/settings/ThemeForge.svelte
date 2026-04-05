@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount, tick } from "svelte";
+    import { exportTavernData, importTavernData } from "../../core/storage/exportImport";
 
     const THEME_KEY = "tavern-theme-v1";
 
@@ -39,6 +40,44 @@
             themeObj = { ...defaultTheme };
         }
     }
+
+    // Cloud Sync State
+    let isExporting = $state(false);
+    let isImporting = $state(false);
+
+    async function handleExport() {
+        isExporting = true;
+        try {
+            await exportTavernData();
+        } catch (e) {
+            console.error(e);
+            alert("Export failed. See console.");
+        }
+        isExporting = false;
+    }
+
+    async function handleImport(e: Event) {
+        const input = e.target as HTMLInputElement;
+        const file = input.files?.[0];
+        if (!file) return;
+
+        if (!confirm("WARNING: This will overwrite ALL current Tavern data with the uploaded backup. Proceed?")) {
+            input.value = "";
+            return;
+        }
+
+        isImporting = true;
+        try {
+            await importTavernData(file);
+            alert("Tavern successfully restored! The page will now reload.");
+            window.location.reload();
+        } catch (err) {
+            console.error(err);
+            alert("Failed to import Tavern data. See console for details.");
+            isImporting = false;
+            input.value = "";
+        }
+    }
 </script>
 
 <div
@@ -54,10 +93,10 @@
                 <h1
                     class="text-3xl font-serif text-[var(--tavern-accent-gold)] tracking-wide mb-1"
                 >
-                    Theme Forge
+                    Tavern Configuration
                 </h1>
                 <p class="text-[var(--tavern-text-main)]/60 text-sm">
-                    Remodel your tavern's aesthetics globally.
+                    Manage your world's backups and global aesthetics.
                 </p>
             </div>
             <button
@@ -69,6 +108,35 @@
         </header>
 
         <div class="flex-1 overflow-y-auto space-y-8 pr-2 custom-scrollbar">
+            
+            <section>
+                <h2
+                    class="text-lg font-serif text-[var(--tavern-accent-gold-bright)] mb-4 border-b border-[var(--tavern-accent-gold)]/10 pb-1"
+                >
+                    Portable Tavern (Backups)
+                </h2>
+                <div class="bg-[var(--tavern-bg-base)] p-4 rounded-lg border border-[var(--tavern-accent-gold)]/20 shadow-inner flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+                    <div class="text-sm text-[var(--tavern-text-main)]/80">
+                        <p class="mb-1 text-[var(--tavern-accent-gold)] font-medium">Backup & Clone</p>
+                        <p class="text-xs opacity-70">Export a .zip file containing all your campaigns, notes, monsters, maps, and audio tracks. You can use this file to load your world onto another device.</p>
+                    </div>
+                    <div class="flex gap-2 shrink-0">
+                        <button
+                            onclick={handleExport}
+                            disabled={isExporting}
+                            class="px-4 py-2 bg-[var(--tavern-accent-gold)]/10 text-[var(--tavern-accent-gold)] border border-[var(--tavern-accent-gold)] rounded hover:bg-[var(--tavern-accent-gold)]/20 transition-colors disabled:opacity-50 text-sm"
+                        >
+                            {isExporting ? 'Packing...' : 'Export Backup ZIP'}
+                        </button>
+                        
+                        <label class="px-4 py-2 bg-[var(--tavern-accent-red)]/10 text-[var(--tavern-accent-red)] border border-[var(--tavern-accent-red)] rounded hover:bg-[var(--tavern-accent-red)]/20 transition-colors cursor-pointer text-sm mb-0 flex items-center justify-center {isImporting ? 'opacity-50 pointer-events-none' : ''}">
+                            {isImporting ? 'Restoring...' : 'Restore from ZIP'}
+                            <input type="file" accept=".zip" class="hidden" onchange={handleImport} />
+                        </label>
+                    </div>
+                </div>
+            </section>
+
             <section>
                 <h2
                     class="text-lg font-serif text-[var(--tavern-accent-gold-bright)] mb-4 border-b border-[var(--tavern-accent-gold)]/10 pb-1"

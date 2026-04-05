@@ -8,8 +8,9 @@
         updateMapTokens,
         updateJourneySettings,
         removeMap,
+        updateMapFogs
     } from "./stores";
-    import type { Token } from "../../types/models";
+    import type { Token, FogZone } from "../../types/models";
 
     let fileInput: HTMLInputElement;
     let bgImageRef: HTMLImageElement | undefined = $state();
@@ -63,6 +64,70 @@
         $mapStore.maps.find((m) => m.id === $mapStore.activeMapId),
     );
     let tokens = $derived(activeMap?.tokens || []);
+    let fogs = $derived(activeMap?.fogs || []);
+
+    // --- Fog State ---
+    let isFogEditMode = $state(false);
+    let isFogDragging = false;
+    let fogBrushState = false;
+
+    function generateFogGrid(gridCount: number) {
+        if (!activeMap) return;
+        if (fogs.length > 0 && !confirm("Overwrite existing fog?")) return;
+
+        const newFogs: FogZone[] = [];
+        const sizePct = 100 / gridCount;
+
+        for (let xId = 0; xId < gridCount; xId++) {
+            for (let yId = 0; yId < gridCount; yId++) {
+                newFogs.push({
+                    id: crypto.randomUUID(),
+                    x: xId * sizePct,
+                    y: yId * sizePct,
+                    width: sizePct,
+                    height: sizePct,
+                    isRevealed: false
+                });
+            }
+        }
+        updateMapFogs(activeMap.id, newFogs);
+    }
+
+    function clearAllFog() {
+        if (!activeMap) return;
+        if (confirm("Clear all fog?")) {
+            updateMapFogs(activeMap.id, []);
+        }
+    }
+
+    function startFogBrush(e: MouseEvent | TouchEvent, fogId: string, currentState: boolean) {
+        if (!isFogEditMode) return;
+        e.stopPropagation(); // Prevents map ping
+        isFogDragging = true;
+        fogBrushState = !currentState; 
+        applyFogBrush(fogId);
+
+        const endDrag = () => {
+            isFogDragging = false;
+            if (activeMap) {
+                updateMapFogs(activeMap.id, activeMap.fogs); // FLUSH to sync
+            }
+            window.removeEventListener('mouseup', endDrag);
+            window.removeEventListener('touchend', endDrag);
+        };
+        window.addEventListener('mouseup', endDrag);
+        window.addEventListener('touchend', endDrag);
+    }
+
+    function onFogEnter(fogId: string) {
+        if (!isFogEditMode || !isFogDragging) return;
+        applyFogBrush(fogId);
+    }
+
+    function applyFogBrush(fogId: string) {
+        if (!activeMap) return;
+        activeMap.fogs = activeMap.fogs.map(f => f.id === fogId ? { ...f, isRevealed: fogBrushState } : f);
+    }
 
     async function handleUpload(e: Event) {
         const target = e.target as HTMLInputElement;
@@ -442,6 +507,30 @@
                             >Hex</button
                         >
                     </div>
+
+                    <!-- Fog Toggle -->
+                    <div class="flex bg-[var(--tavern-bg-base)] border border-[var(--tavern-accent-gold)]/20 rounded overflow-hidden">
+                        <button
+                            onclick={() => isFogEditMode = !isFogEditMode}
+                            class="px-2 py-1 text-xs transition-colors {isFogEditMode
+                                ? 'bg-purple-500/20 text-purple-400'
+                                : 'text-[var(--tavern-text-main)]/40 hover:bg-[var(--tavern-accent-gold)]/10'}"
+                            title="Fog of War Editor"
+                            >☁️ Fog</button
+                        >
+                        {#if isFogEditMode}
+                            <button
+                                onclick={() => generateFogGrid(25)}
+                                class="px-2 py-1 text-xs transition-colors hover:bg-[var(--tavern-accent-gold)]/20 text-[var(--tavern-accent-gold)] border-l border-[var(--tavern-accent-gold)]/20"
+                                >Cover Map</button
+                            >
+                            <button
+                                onclick={clearAllFog}
+                                class="px-2 py-1 text-xs transition-colors hover:bg-red-500/20 text-red-500 border-l border-[var(--tavern-accent-gold)]/20"
+                                >Clear</button
+                            >
+                        {/if}
+                    </div>
                 </div>
 
                 <!-- Environment Controls -->
@@ -574,6 +663,31 @@
                                 style="left: {ping.x}%; top: {ping.y}%; transform: translate(-50%, -50%);"
                             ></div>
                         {/each}
+                    </div>
+
+                    <!-- Fogs Layer -->
+                    <div class="absolute inset-0 z-40 {isFogEditMode ? '' : 'pointer-events-none'}">
+                        {#if isFogEditMode}
+                            {#each fogs as fog (fog.id)}
+                                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                <div 
+                                    onmousedown={(e) => startFogBrush(e, fog.id, fog.isRevealed)}
+                                    ontouchstart={(e) => startFogBrush(e, fog.id, fog.isRevealed)}
+                                    onmouseenter={() => onFogEnter(fog.id)}
+                                    class="absolute border border-black/30 cursor-crosshair box-border transition-colors duration-75 {fog.isRevealed ? 'bg-green-500/30 hover:bg-green-500/50' : 'bg-red-500/50 hover:bg-red-500/70'}"
+                                    style="left: {fog.x}%; top: {fog.y}%; width: {fog.width}%; height: {fog.height}%;"
+                                ></div>
+                            {/each}
+                        {:else}
+                            {#each fogs as fog (fog.id)}
+                                {#if !fog.isRevealed}
+                                    <div 
+                                        class="absolute bg-black backdrop-blur-sm transition-opacity duration-300 rounded-[1px] transform scale-[1.02] pointer-events-none"
+                                        style="left: {fog.x}%; top: {fog.y}%; width: {fog.width}%; height: {fog.height}%;"
+                                    ></div>
+                                {/if}
+                            {/each}
+                        {/if}
                     </div>
 
                     <!-- Tokens Layer -->
