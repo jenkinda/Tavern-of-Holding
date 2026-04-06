@@ -337,7 +337,7 @@
                 {#if $campaignStore.activeCampaignId}
                     <div class="mt-6 bg-[var(--tavern-bg-base)] rounded-xl border border-[var(--tavern-accent-gold)]/30 p-4 shadow-inner animate-in slide-in-from-bottom-2">
                         <h3 class="text-sm font-serif text-[var(--tavern-accent-gold)] tracking-widest uppercase mb-1">Cloud Database (BaaS)</h3>
-                        <p class="text-[0.65rem] text-[var(--tavern-text-main)]/60 mb-3 leading-tight opacity-80">Backup/Sync this campaign via JSONBlob Node.</p>
+                        <p class="text-[0.65rem] text-[var(--tavern-text-main)]/60 mb-3 leading-tight opacity-80">Backup/Sync this campaign via Restful-API Node.</p>
                         
                         <input 
                             type="text" 

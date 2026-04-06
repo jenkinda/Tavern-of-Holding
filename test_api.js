@@ -1,1 +1,1 @@
-fetch("https://jsonblob.com/api/jsonBlob", { method: "OPTIONS", headers: { "Origin": "https://jenkinda.github.io", "Access-Control-Request-Method": "POST" } }).then(r=>console.log(r.status, [...r.headers.entries()])).catch(console.error);
+fetch("https://api.restful-api.dev/objects", { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify({name: "tavern-campaign", data: {campaign: "data here"}}) }).then(r=>{console.log(r.status); return r.json()}).then(console.log).catch(console.error);

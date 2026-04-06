@@ -1,11 +1,11 @@
 /**
  * cloud.ts
  * Implements a generic Backend-as-a-Service (BaaS) adapter for Cloud Sync.
- * Currently uses extendsclass.com as a frictionless, no-auth datastore to support 
+ * Currently uses restful-api.dev as a frictionless, no-auth datastore to support 
  * "Host Tokens" immediately without requiring user API configurations.
  */
 
-const BAAS_BASE_URL = 'https://extendsclass.com/api/json-storage/bin';
+const BAAS_BASE_URL = 'https://api.restful-api.dev/objects';
 
 /**
  * Pushes raw JSON string to the BaaS and returns a Host Token
@@ -18,7 +18,10 @@ export async function pushToCloud(jsonPayload: string): Promise<string> {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
-            body: jsonPayload
+            body: JSON.stringify({
+                name: "TavernCampaign",
+                data: JSON.parse(jsonPayload)
+            })
         });
 
         if (!response.ok) {
@@ -49,7 +52,10 @@ export async function updateCloud(hostToken: string, jsonPayload: string): Promi
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
-            body: jsonPayload
+            body: JSON.stringify({
+                name: "TavernCampaign",
+                data: JSON.parse(jsonPayload)
+            })
         });
 
         if (!response.ok) {
@@ -82,8 +88,11 @@ export async function pullFromCloud(hostToken: string): Promise<string> {
             throw new Error(`Cloud fetch failed: ${response.statusText}. The token may be expired or invalid.`);
         }
 
-        const text = await response.text();
-        return text;
+        const responseData = await response.json();
+        if (!responseData.data) {
+            throw new Error("Invalid cloud payload structure. Missing 'data' object.");
+        }
+        return JSON.stringify(responseData.data);
     } catch (err) {
         console.error("Cloud pull error:", err);
         throw err;
