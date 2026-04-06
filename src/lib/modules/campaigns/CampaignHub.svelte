@@ -18,7 +18,7 @@
         importCampaignData,
         downloadJsonFile,
     } from "../../core/storage/transfer";
-    import { pushToCloud, pullFromCloud, updateCloud } from "../../core/storage/cloud";
+    import { hostSyncSession, pullSyncData } from "../../core/sync/p2pSync";
 
     let importInput: HTMLInputElement;
 
@@ -57,40 +57,55 @@
         reader.readAsText(file);
     }
 
-    let cloudToken = $state("");
-    let isCloudLoading = $state(false);
+    let nexusToken = $state("");
+    let isNexusLoading = $state(false);
+    let nexusStatus = $state("");
+    let stopNexus: (() => void) | null = $state(null);
 
-    async function handlePushCloud(campaignId: string) {
-        isCloudLoading = true;
+    async function handleHostNexus(campaignId: string) {
+        if (stopNexus) {
+            stopNexus();
+            stopNexus = null;
+            isNexusLoading = false;
+            nexusStatus = "";
+            return;
+        }
+
+        isNexusLoading = true;
+        nexusStatus = "Preparing state...";
         try {
             const json = await exportCampaignData(campaignId);
-            if (cloudToken) {
-                await updateCloud(cloudToken, json);
-                alert("Successfully pushed updates to Cloud Node!");
-            } else {
-                cloudToken = await pushToCloud(json);
-                alert(`Successfully created Cloud Node! Your Host Token is: ${cloudToken}\n\nSave this token to load this campaign elsewhere.`);
-            }
+            stopNexus = hostSyncSession(json, (msg) => {
+                nexusStatus = msg;
+                if (msg.includes('Hosting on Token:')) {
+                    nexusToken = msg.split('Hosting on Token:')[1].split('\n')[0].trim();
+                }
+            });
         } catch (e: any) {
             console.error(e);
-            alert(`Cloud push failed: ${e.message}`);
+            alert(`Nexus host failed: ${e.message}`);
+            isNexusLoading = false;
+            stopNexus = null;
         }
-        isCloudLoading = false;
     }
 
-    async function handlePullCloud() {
-        if (!cloudToken) return alert("Enter a Host Token first to pull data.");
-        isCloudLoading = true;
+    async function handlePullNexus() {
+        if (!nexusToken) return alert("Enter a Nexus Token first to pull data.");
+        isNexusLoading = true;
+        nexusStatus = "Dialing Nexus Node...";
         try {
-            const json = await pullFromCloud(cloudToken);
+            const json = await pullSyncData(nexusToken, (msg) => {
+                nexusStatus = msg;
+            });
             await importCampaignData(json);
             await loadCampaigns();
-            alert("Successfully pulled and merged from Cloud Node!");
+            alert("Successfully pulled and merged from Nexus Node!");
         } catch (e: any) {
             console.error(e);
-            alert(`Cloud pull failed: ${e.message}`);
+            alert(`Nexus pull failed: ${e.message}`);
         }
-        isCloudLoading = false;
+        isNexusLoading = false;
+        nexusStatus = "";
     }
 
     onMount(() => {
@@ -333,31 +348,41 @@
                     </ul>
                 {/if}
 
-                <!-- Cloud Sync Panel -->
+                <!-- P2P Sync Panel -->
                 {#if $campaignStore.activeCampaignId}
-                    <div class="mt-6 bg-[var(--tavern-bg-base)] rounded-xl border border-[var(--tavern-accent-gold)]/30 p-4 shadow-inner animate-in slide-in-from-bottom-2">
-                        <h3 class="text-sm font-serif text-[var(--tavern-accent-gold)] tracking-widest uppercase mb-1">Cloud Database (BaaS)</h3>
-                        <p class="text-[0.65rem] text-[var(--tavern-text-main)]/60 mb-3 leading-tight opacity-80">Backup/Sync this campaign via JSONBlob Node (Fixed headers).</p>
+                    <div class="mt-6 bg-[var(--tavern-bg-base)] rounded-xl border border-[var(--tavern-accent-gold)]/30 p-4 shadow-inner animate-in slide-in-from-bottom-2 relative overflow-hidden">
+                        {#if isNexusLoading}
+                            <div class="absolute inset-0 bg-[var(--tavern-bg-panel)]/90 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-4 text-center">
+                                <div class="w-6 h-6 border-2 border-[var(--tavern-accent-gold)]/30 border-t-[var(--tavern-accent-gold)] rounded-full animate-spin mb-2"></div>
+                                <span class="text-xs font-mono text-[var(--tavern-accent-gold)] whitespace-pre-wrap">{nexusStatus}</span>
+                                {#if stopNexus}
+                                    <button 
+                                        onclick={() => handleHostNexus($campaignStore.activeCampaignId!)} 
+                                        class="mt-3 text-[10px] uppercase tracking-wider text-red-400 hover:text-red-300 transition-colors"
+                                    >Cancel Hosting</button>
+                                {/if}
+                            </div>
+                        {/if}
+                        <h3 class="text-sm font-serif text-[var(--tavern-accent-gold)] tracking-widest uppercase mb-1">P2P Nexus Sync</h3>
+                        <p class="text-[0.65rem] text-[var(--tavern-text-main)]/60 mb-3 leading-tight opacity-80">Direct device-to-device secure data tunnel.</p>
                         
                         <input 
                             type="text" 
-                            bind:value={cloudToken} 
-                            placeholder="Host Token (Leave blank to generate)" 
+                            bind:value={nexusToken} 
+                            placeholder="Nexus Token (Leave blank to host)" 
                             class="w-full bg-[var(--tavern-bg-panel)] border border-[var(--tavern-accent-gold)]/40 rounded px-2 py-1.5 text-xs text-[var(--tavern-text-main)] font-mono mb-3 focus:outline-none focus:border-[var(--tavern-accent-gold)] transition-colors"
                         />
                         
                         <div class="flex gap-2">
                             <button 
-                                onclick={() => handlePushCloud($campaignStore.activeCampaignId!)} 
-                                class="flex-1 bg-[var(--tavern-accent-red)] hover:bg-[var(--tavern-accent-red-hover)] text-white px-2 py-1.5 rounded text-xs transition-all font-medium shadow {isCloudLoading ? 'opacity-50 cursor-not-allowed' : ''}" 
-                                disabled={isCloudLoading}
+                                onclick={() => handleHostNexus($campaignStore.activeCampaignId!)} 
+                                class="flex-1 bg-[var(--tavern-accent-red)] hover:bg-[var(--tavern-accent-red-hover)] text-white px-2 py-1.5 rounded text-xs transition-all font-medium shadow" 
                             >
-                                {isCloudLoading ? 'Syncing...' : 'Push to Cloud'}
+                                Start Host Server
                             </button>
                             <button 
-                                onclick={handlePullCloud} 
-                                class="flex-1 bg-[var(--tavern-bg-panel)] hover:bg-[var(--tavern-bg-base)] text-[var(--tavern-accent-gold)] border border-[var(--tavern-accent-gold)]/40 px-2 py-1.5 rounded text-xs transition-all font-medium shadow {isCloudLoading ? 'opacity-50 cursor-not-allowed' : ''}" 
-                                disabled={isCloudLoading}
+                                onclick={handlePullNexus} 
+                                class="flex-1 bg-[var(--tavern-bg-panel)] hover:bg-[var(--tavern-bg-base)] text-[var(--tavern-accent-gold)] border border-[var(--tavern-accent-gold)]/40 px-2 py-1.5 rounded text-xs transition-all font-medium shadow" 
                             >
                                 Pull & Merge
                             </button>
