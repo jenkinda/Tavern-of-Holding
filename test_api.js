@@ -1,0 +1,1 @@
+fetch("https://jsonblob.com/api/jsonBlob", { method: "OPTIONS", headers: { "Origin": "https://jenkinda.github.io", "Access-Control-Request-Method": "POST" } }).then(r=>console.log(r.status, [...r.headers.entries()])).catch(console.error);

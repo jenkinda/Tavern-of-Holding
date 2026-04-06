@@ -1,12 +1,11 @@
 /**
  * cloud.ts
  * Implements a generic Backend-as-a-Service (BaaS) adapter for Cloud Sync.
- * Currently uses JSONBlob as a frictionless, no-auth datastore to support 
+ * Currently uses extendsclass.com as a frictionless, no-auth datastore to support 
  * "Host Tokens" immediately without requiring user API configurations.
  */
 
-// We will use JSONBlob api for a frictionless BaaS
-const BAAS_BASE_URL = 'https://jsonblob.com/api/jsonBlob';
+const BAAS_BASE_URL = 'https://extendsclass.com/api/json-storage/bin';
 
 /**
  * Pushes raw JSON string to the BaaS and returns a Host Token
@@ -23,20 +22,16 @@ export async function pushToCloud(jsonPayload: string): Promise<string> {
         });
 
         if (!response.ok) {
-            throw new Error(`Cloud sync failed: ${response.statusText}`);
+            throw new Error(`Cloud sync failed: ${response.statusText} - You may have exceeded max payload size.`);
         }
 
-        // JSONBlob returns the location of the new blob in the headers
-        const location = response.headers.get('Location');
-        if (!location) {
-            throw new Error("BaaS did not return a valid Host Token location.");
+        const data = await response.json();
+        
+        if (!data.id) {
+            throw new Error("BaaS did not return a valid Host Token ID.");
         }
 
-        // Location looks like: https://jsonblob.com/api/jsonBlob/1239847192837
-        const parts = location.split('/');
-        const hostToken = parts[parts.length - 1];
-
-        return hostToken;
+        return data.id;
     } catch (err) {
         console.error("Cloud push error:", err);
         throw err;
