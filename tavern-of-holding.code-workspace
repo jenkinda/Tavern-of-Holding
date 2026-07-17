@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "Tavern of Holding (App)",
+			"path": "."
+		},
+		{
+			"name": "TavernOfHolding_Documentation",
+			"path": "c:\\Users\\jenki\\Documents\\Obsidian Vault"
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/.obsidian": true
+		}
+	}
+}
